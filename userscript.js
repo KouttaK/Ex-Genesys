@@ -77,40 +77,7 @@
         attachEventListeners() { const closeBtn = this.popupContainer.querySelector('#close-popup-btn'); const backdrop = this.popupContainer.querySelector('#popup-backdrop'); closeBtn?.addEventListener('click', () => this.removePopup()); backdrop?.addEventListener('click', () => this.removePopup()); this.popupContainer.querySelectorAll('.copy-doc-btn').forEach(btn => { btn.addEventListener('click', (e) => { const button = e.currentTarget; const documentToCopy = button.getAttribute('data-document'); this.copyToClipboard(documentToCopy, button, true); }); }); }
         copyToClipboard(text, buttonElement = null, closeModal = false) { if (!text) return; navigator.clipboard.writeText(text).then(() => { if (buttonElement) { const originalText = buttonElement.textContent; buttonElement.textContent = '✅ Copiado!'; buttonElement.style.background = '#17a2b8'; if (closeModal) { setTimeout(() => this.removePopup(), 800); } else { setTimeout(() => { buttonElement.textContent = originalText; buttonElement.style.background = '#28a745'; }, 2000); } } }).catch(err => console.error('Erro ao copiar:', err)); }
         removePopup() { if (this.popupContainer) { this.popupContainer.remove(); this.popupContainer = null; } }
-        
-        // ✨ MÉTODO CORRIGIDO ✨
-        showFeedback(message) {
-            if (this.feedbackTimeout) clearTimeout(this.feedbackTimeout);
-            let feedbackEl = document.getElementById('copy-feedback-toast');
-            if (!feedbackEl) {
-                feedbackEl = document.createElement('div');
-                feedbackEl.id = 'copy-feedback-toast';
-                feedbackEl.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #28a745; color: white; padding: 12px 20px; border-radius: 8px; z-index: 10001; font-family: Arial, sans-serif; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.3s, bottom 0.3s;`;
-                document.body.appendChild(feedbackEl);
-            }
-            feedbackEl.textContent = message;
-            
-            setTimeout(() => {
-                feedbackEl.style.opacity = '1';
-                feedbackEl.style.bottom = '30px';
-                feedbackEl.style.pointerEvents = 'auto';
-            }, 10);
-
-            this.feedbackTimeout = setTimeout(() => {
-                feedbackEl.style.opacity = '0';
-                feedbackEl.style.bottom = '20px';
-                feedbackEl.style.pointerEvents = 'none';
-
-                // Remove o elemento do DOM após a transição de 0.3s
-                setTimeout(() => {
-                    if (feedbackEl) {
-                        feedbackEl.remove();
-                    }
-                }, 300); // Duração da transição
-
-            }, 3000);
-        }
-
+        showFeedback(message) { if (this.feedbackTimeout) clearTimeout(this.feedbackTimeout); let feedbackEl = document.getElementById('copy-feedback-toast'); if (!feedbackEl) { feedbackEl = document.createElement('div'); feedbackEl.id = 'copy-feedback-toast'; feedbackEl.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #28a745; color: white; padding: 12px 20px; border-radius: 8px; z-index: 10001; font-family: Arial, sans-serif; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.3s, bottom 0.3s;`; document.body.appendChild(feedbackEl); } feedbackEl.textContent = message; setTimeout(() => { feedbackEl.style.opacity = '1'; feedbackEl.style.bottom = '30px'; feedbackEl.style.pointerEvents = 'auto'; }, 10); this.feedbackTimeout = setTimeout(() => { feedbackEl.style.opacity = '0'; feedbackEl.style.bottom = '20px'; feedbackEl.style.pointerEvents = 'none'; setTimeout(() => { if (feedbackEl) { feedbackEl.remove(); } }, 300); }, 3000); }
         showInfoPopup(title, message, borderColor) { this.removePopup(); this.popupContainer = document.createElement('div'); this.popupContainer.innerHTML = `<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:2px solid ${borderColor};border-radius:10px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:10000;max-width:350px;text-align:center;font-family:Arial,sans-serif;"><div style="font-size:48px;margin-bottom:10px;">${borderColor === '#ffc107' ? '⚠️' : '❌'}</div><h3 style="margin:10px 0;">${title}</h3><p style="color:#6c757d;margin-bottom:20px; text-align: left;">${message}</p><button id="close-info-btn" style="background:${borderColor};color:white;border:none;border-radius:5px;padding:10px 20px;cursor:pointer;font-weight:bold;">OK</button></div><div id="info-backdrop" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;"></div>`; document.body.appendChild(this.popupContainer); this.popupContainer.querySelector('#close-info-btn')?.addEventListener('click', () => this.removePopup()); this.popupContainer.querySelector('#info-backdrop')?.addEventListener('click', () => this.removePopup()); }
         showNoDocumentsPopup() { this.showInfoPopup('Nenhum Documento Encontrado', 'Não foram encontrados CPFs ou CNPJs válidos na conversa atual.', '#ffc107'); }
         showErrorPopup(errorMessage) { this.showInfoPopup('Erro na Busca', `<strong>Detalhes:</strong><br>${errorMessage}`, '#dc3545'); }
@@ -168,9 +135,102 @@
     }
 
     // ==========================
-    // Inicializa o sistema
+    // NOVA CLASSE PARA CÓPIA COMBINADA
     // ==========================
-    const manager = new ShadowIframeButtonManager("https://apps.sae1.pure.cloud/messaging-gadget/messaging-gadget.html");
-    manager.initialize();
+    class CombinedCopyInjector {
+        constructor() {
+            this.copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-560h80v560h560v80H160Zm160-720v480-480Z"/></svg>`;
+            this.successIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>`;
+        }
+
+        inject(targetContainer) {
+            if (!targetContainer) {
+                console.error("Não foi possível encontrar o local para injetar o botão de cópia combinada.");
+                return;
+            }
+
+            const button = document.createElement('button');
+            button.className = 'combined-copy-btn';
+            button.title = 'Copiar nome e protocolo';
+            button.innerHTML = this.copyIconSVG;
+
+            button.style.cssText = `
+                cursor: pointer;
+                transition: background-color 0.3s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgb(28, 126, 225);
+                border-radius: 6px;
+                padding: 5px;
+                border: 2px solid rgb(255, 255, 255);
+                margin-left: 8px;
+            `;
+
+            button.addEventListener('mouseenter', () => button.style.backgroundColor = '#1565C0');
+            button.addEventListener('mouseleave', () => button.style.backgroundColor = 'rgb(28, 126, 225)');
+            button.addEventListener('click', async () => {
+                const originalIcon = button.innerHTML;
+                button.disabled = true;
+
+                try {
+                    const originalCopyButton = document.querySelector('.copy-action-button');
+                    if (!originalCopyButton) throw new Error('Botão de cópia original (.copy-action-button) não encontrado.');
+                    originalCopyButton.click();
+                    
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const step1Value = await navigator.clipboard.readText();
+                    if (!step1Value) throw new Error('Não foi possível ler o valor da área de transferência.');
+
+                    const participantElement = document.getElementById('interaction-header-participant-name');
+                    if (!participantElement) throw new Error('Elemento do nome do participante não encontrado.');
+                    const participantName = participantElement.textContent.trim();
+
+                    const finalValue = `${participantName}\n${step1Value}`;
+                    await navigator.clipboard.writeText(finalValue);
+
+                    button.innerHTML = this.successIconSVG;
+                    button.style.backgroundColor = '#28a745';
+
+                } catch (error) {
+                    console.error('❌ Erro na cópia combinada:', error);
+                    alert(`Erro ao executar a cópia combinada: ${error.message}`);
+                    button.style.backgroundColor = '#dc3545';
+                } finally {
+                    setTimeout(() => {
+                        button.innerHTML = originalIcon;
+                        button.disabled = false;
+                        button.style.backgroundColor = 'rgb(28, 126, 225)';
+                    }, 2000);
+                }
+            });
+
+            targetContainer.appendChild(button);
+            console.log(`✅ Botão de cópia combinada injetado com sucesso!`);
+        }
+
+        startWatcher(interval = 1000) {
+            setInterval(() => {
+                const targetContainer = document.querySelector('.actions-container');
+                if (targetContainer && !targetContainer.querySelector('.combined-copy-btn')) {
+                    console.log('🔎 Injetando botão de cópia combinada...');
+                    this.inject(targetContainer);
+                }
+            }, interval);
+            console.log('📡 Vigia de injeção de botão de cópia combinada ativado.');
+        }
+    }
+
+
+    // ==========================
+    // Inicializa os dois sistemas
+    // ==========================
+    // Sistema de busca de documentos no chat
+    const documentSearchManager = new ShadowIframeButtonManager("https://apps.sae1.pure.cloud/messaging-gadget/messaging-gadget.html");
+    documentSearchManager.initialize();
+
+    // Sistema de cópia combinada de protocolo
+    const combinedCopyManager = new CombinedCopyInjector();
+    combinedCopyManager.startWatcher();
 
 })();
