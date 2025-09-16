@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Genesys Helper Suite
 // @namespace    http://your-domain.com/
-// @version      3.3
+// @version      3.4
 // @description  Sistema unificado para cronômetro de conversas, busca de documentos (CPF/CNPJ) e cópia combinada de informações do participante.
-// @author       KouttaK 
-// @match        *://*/*
+// @author       KouttaK
+// @match        https://apps.sae1.pure.cloud/*
 // @grant        GM_addStyle
 // ==/UserScript==
 
@@ -290,15 +290,18 @@
                     title: 'Copiar nome e protocolo',
                     icon: 'copy',
                     border: '2px solid rgb(255, 255, 255)',
-                    onClick: async (e) => {
-                        await this._performCombinedCopy(e.target.closest('button'));
+                    onClick: async () => { // MODIFICADO: Removido o parâmetro 'e'
+                        await this._performCombinedCopy();
                     }
                 });
                 targetContainer.appendChild(button);
             }
         }
 
-        async _performCombinedCopy(button) {
+        async _performCombinedCopy() { // MODIFICADO: Lógica interna completamente refeita
+            const button = document.querySelector(`.${CONFIG.COMBINED_COPY.CLASSES.button}`);
+            if (!button) return; // Salvaguarda caso o botão não seja encontrado
+
             try {
                 const originalCopyButton = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_originalCopyButton);
                 if (!originalCopyButton) throw new Error('Botão de cópia original não encontrado.');
@@ -316,12 +319,20 @@
                 await navigator.clipboard.writeText(combinedText);
 
                 this.uiManager.showFeedbackToast('Nome e protocolo copiados!');
-                this.buttonFactory.setButtonState(button, 'default', this.buttonFactory.icons.copy);
+                this.buttonFactory.setButtonState(button, 'success', this.buttonFactory.icons.success);
 
             } catch (error) {
                 console.error('Combined copy failed:', error);
                 this.uiManager.showErrorPopup(error.message);
-                throw error; // Propagate error to be caught by the generic handler in createButton
+                throw error; // Propaga o erro para ser pego pelo manipulador genérico no ButtonFactory
+            } finally {
+                // Reseta o botão para o estado padrão após um tempo, tanto em caso de sucesso quanto de falha
+                setTimeout(() => {
+                    const currentButton = document.querySelector(`.${CONFIG.COMBINED_COPY.CLASSES.button}`);
+                    if (currentButton) {
+                        this.buttonFactory.setButtonState(currentButton, 'default', this.buttonFactory.icons.copy);
+                    }
+                }, 2000);
             }
         }
     }
@@ -339,7 +350,7 @@
         }
 
         init() {
-            console.log('🚀 Initializing Genesys Helper Suite v3.3...');
+            console.log('🚀 Initializing Genesys Helper Suite v3.4...');
             if (typeof GM_addStyle === 'function') {
                 GM_addStyle(STYLES);
             } else {
