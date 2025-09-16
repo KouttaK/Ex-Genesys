@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Genesys Helper Suite
 // @namespace    http://your-domain.com/
-// @version      3.2
-// @description  Sistema unificado para cronômetro de conversas, busca de documentos (CPF/CNPJ) e cópia combinada de informações do participante. 
-// @author       KouttaK
+// @version      3.3
+// @description  Sistema unificado para cronômetro de conversas, busca de documentos (CPF/CNPJ) e cópia combinada de informações do participante.
+// @author       KouttaK 
 // @match        *://*/*
 // @grant        GM_addStyle
 // ==/UserScript==
@@ -13,10 +13,9 @@
 
     // ==================== CONFIGURATION ====================
     const CONFIG = {
-        WATCHER_INTERVAL_MS: 1000, // Usado apenas para fallback, a lógica principal é via MutationObserver
+        WATCHER_INTERVAL_MS: 1000,
         IFRAME_SRC: "https://apps.sae1.pure.cloud/messaging-gadget/messaging-gadget.html",
 
-        // --- Módulo de Cronômetro ---
         TIMER: {
             LIMIT_TIME_MS: 70 * 1000,
             UPDATE_INTERVAL_MS: 100,
@@ -37,7 +36,6 @@
             }
         },
 
-        // --- Módulo de Busca de Documentos ---
         DOC_SEARCH: {
             SELECTORS: {
                 iframe_chatContainer: '[data-automation-id="message-history"]',
@@ -50,7 +48,6 @@
             }
         },
 
-        // --- Módulo de Cópia Combinada ---
         COMBINED_COPY: {
             SELECTORS: {
                 main_actionsContainer: '.actions-container',
@@ -116,7 +113,45 @@
         showFeedbackToast(message) { if (this.feedbackTimeout) clearTimeout(this.feedbackTimeout); let feedbackEl = document.getElementById('copy-feedback-toast-v3'); if (!feedbackEl) { feedbackEl = document.createElement('div'); feedbackEl.id = 'copy-feedback-toast-v3'; document.body.appendChild(feedbackEl); } feedbackEl.textContent = message; setTimeout(() => { feedbackEl.style.opacity = '1'; feedbackEl.style.bottom = '30px'; feedbackEl.style.pointerEvents = 'auto'; }, 10); this.feedbackTimeout = setTimeout(() => { feedbackEl.style.opacity = '0'; feedbackEl.style.bottom = '20px'; feedbackEl.style.pointerEvents = 'none'; setTimeout(() => feedbackEl.remove(), 300); }, 3000); }
     }
 
-    // ==================== FEATURE MODULES ====================
+    class ButtonFactory {
+        constructor() { this.icons = { search: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z"/></svg>`, copy: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-560h80v560h560v80H160Zm160-720v480-480Z"/></svg>`, loading: `<svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#FFFFFF"><style>.spinner_V8m1{transform-origin:center;animation:spinner_zKoa 1.2s linear infinite}.spinner_V8m1 circle{stroke-linecap:round;animation:spinner_YpZS 1.5s ease-in-out infinite}@keyframes spinner_zKoa{100%{transform:rotate(360deg)}}@keyframes spinner_YpZS{0%{stroke-dasharray:0 150;stroke-dashoffset:0}47.5%{stroke-dasharray:42 150;stroke-dashoffset:-16}95%,100%{stroke-dasharray:42 150;stroke-dashoffset:-59}}</style><g class="spinner_V8m1"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="3"></circle></g></svg>`, success: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>` }; }
+        createButton({ className, title, icon, onClick, border = '1px solid #fff' }) {
+            const button = document.createElement('button');
+            button.className = className;
+            button.title = title;
+            button.innerHTML = this.icons[icon] || icon;
+            this._applyBaseStyles(button, border);
+            button.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                this.setButtonState(button, 'loading');
+                try {
+                    await onClick(e);
+                    // On success, the onClick handler should manage the final state
+                } catch (error) {
+                    console.error(`Button action for "${title}" failed:`, error);
+                    this.setButtonState(button, 'error');
+                    setTimeout(() => this.setButtonState(button, 'default', this.icons[icon] || icon), 2000);
+                }
+            });
+            return button;
+        }
+        _applyBaseStyles(button, border) {
+            Object.assign(button.style, { cursor: 'pointer', transition: 'background-color 0.3s, opacity 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1c7ee1', borderRadius: '6px', padding: '5px', border: border, marginLeft: '8px', opacity: '1' });
+            button.addEventListener('mouseenter', () => { if (!button.disabled) button.style.backgroundColor = '#1565C0'; });
+            button.addEventListener('mouseleave', () => { if (!button.disabled) button.style.backgroundColor = '#1c7ee1'; });
+        }
+        setButtonState(button, state, icon = null) {
+            button.disabled = (state === 'loading');
+            button.innerHTML = state === 'loading' ? this.icons.loading : (icon || button.innerHTML);
+            switch (state) {
+                case 'success': button.style.backgroundColor = '#28a745'; break;
+                case 'error': button.style.backgroundColor = '#dc3545'; break;
+                default: button.style.backgroundColor = '#1c7ee1'; button.disabled = false; break;
+            }
+        }
+    }
+
+    // ==================== CORE & FEATURE MODULES ====================
 
     class ConversationTimer {
         constructor(element) { this.element = element; this.startTime = Date.now(); this.totalPausedTime = 0; this.isRunning = false; this.isCompleted = false; this.intervalId = null; this.timerDiv = null; this.numberDiv = null; this.holdTimer = null; this.boundStartHold = this.startHold.bind(this); this.boundCancelHold = this.cancelHold.bind(this); this.createElements(); this.pause(); }
@@ -134,21 +169,66 @@
         destroy() { clearInterval(this.intervalId); clearTimeout(this.holdTimer); if (this.timerDiv) { this.timerDiv.removeEventListener('mousedown', this.boundStartHold); this.timerDiv.removeEventListener('mouseup', this.boundCancelHold); this.timerDiv.removeEventListener('mouseleave', this.boundCancelHold); this.timerDiv.remove(); } this.numberDiv?.remove(); this.timerDiv = null; this.numberDiv = null; this.element = null; }
     }
 
-    class ChatProcessor {
-        constructor(iframeDocument, uiManager) { this.iframeDoc = iframeDocument; this.uiManager = uiManager; }
-        extractTextFromMessages(chatContainer) { if (!chatContainer) return ''; const messages = chatContainer.querySelectorAll(CONFIG.DOC_SEARCH.SELECTORS.iframe_messageBody); return Array.from(messages).map(msg => msg.textContent).join('\n'); }
-        async scrollToTop(chatContainer) { return new Promise(resolve => { let attempts = 0; const scrollInterval = setInterval(() => { const systemMessage = chatContainer.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_systemMessage); if ((systemMessage && systemMessage.offsetParent !== null) || ++attempts > 50) { clearInterval(scrollInterval); resolve(); } else { chatContainer.scrollTop = 0; } }, 100); }); }
-        async findAndProcessDocuments() {
+    class TimerModule {
+        constructor() {
+            this.timers = new Map();
+            this.updateQueued = false;
+        }
+        addTimer(element) { if (element && !this.timers.has(element)) { this.timers.set(element, new ConversationTimer(element)); } }
+        removeTimer(element) { const timer = this.timers.get(element); if (timer) { timer.destroy(); this.timers.delete(element); } }
+        queueUpdate() { if(this.updateQueued) return; this.updateQueued = true; requestAnimationFrame(()=>this.performUpdate()); }
+        performUpdate() {
+            this.timers.forEach((timer, element) => { if (!document.body.contains(element)) this.removeTimer(element); });
+            const visibleConversations = Array.from(this.timers.keys()).filter(el => el.offsetParent !== null).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            visibleConversations.forEach((conv, index) => this.timers.get(conv)?.setNumber(index + 1));
+            const activeConv = document.querySelector(CONFIG.TIMER.SELECTORS.activeConversation);
+            this.timers.forEach((timer, element) => { element === activeConv ? timer.start() : timer.pause(); });
+            this.updateQueued = false;
+        }
+        updateFromDOM() {
+            document.querySelectorAll(CONFIG.TIMER.SELECTORS.conversation).forEach(conv => this.addTimer(conv));
+            this.queueUpdate();
+        }
+    }
+
+    class DocSearchModule {
+        constructor(uiManager, buttonFactory) {
+            this.uiManager = uiManager;
+            this.buttonFactory = buttonFactory;
+        }
+
+        injectOrUpdate() {
+            this._findTargetIframes().forEach(iframe => {
+                try {
+                    const actionBar = iframe.contentDocument?.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_actionBar);
+                    if (actionBar && !actionBar.querySelector(`.${CONFIG.DOC_SEARCH.CLASSES.button}`)) {
+                        const button = this.buttonFactory.createButton({
+                            className: CONFIG.DOC_SEARCH.CLASSES.button,
+                            title: 'Buscar CPF/CNPJ na conversa',
+                            icon: 'search',
+                            onClick: async () => {
+                                await this._findAndProcessDocuments(iframe.contentDocument);
+                                // The button state is reset inside the click handler logic
+                            }
+                        });
+                        actionBar.appendChild(button);
+                    }
+                } catch (e) { /* ignore cross-origin errors */ }
+            });
+        }
+
+        async _findAndProcessDocuments(iframeDoc) {
+            const button = iframeDoc.querySelector(`.${CONFIG.DOC_SEARCH.CLASSES.button}`);
             try {
-                const chatContainer = this.iframeDoc.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_chatContainer);
+                const chatContainer = iframeDoc.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_chatContainer);
                 if (!chatContainer) throw new Error('Chat container not found inside the iframe.');
-                
-                await this.scrollToTop(chatContainer);
+
+                await this._scrollToTop(chatContainer);
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const messagesText = this.extractTextFromMessages(chatContainer);
+
+                const messagesText = this._extractTextFromMessages(chatContainer);
                 const documents = DocumentValidator.findDocuments(messagesText);
-                
+
                 if (documents.length === 1) {
                     const docToCopy = documents[0];
                     await this.uiManager.copyToClipboard(docToCopy.formatted);
@@ -161,74 +241,143 @@
             } catch (error) {
                 console.error('Error during document search:', error);
                 this.uiManager.showErrorPopup(error.message);
+                if(button) this.buttonFactory.setButtonState(button, 'error', this.buttonFactory.icons.search);
+            } finally {
+                 if(button) setTimeout(()=> this.buttonFactory.setButtonState(button, 'default', this.buttonFactory.icons.search), 1500);
             }
+        }
+
+        _extractTextFromMessages(chatContainer) {
+            if (!chatContainer) return '';
+            const messages = chatContainer.querySelectorAll(CONFIG.DOC_SEARCH.SELECTORS.iframe_messageBody);
+            return Array.from(messages).map(msg => msg.textContent).join('\n');
+        }
+
+        async _scrollToTop(chatContainer) {
+            return new Promise(resolve => {
+                let attempts = 0;
+                const scrollInterval = setInterval(() => {
+                    const systemMessage = chatContainer.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_systemMessage);
+                    if ((systemMessage && systemMessage.offsetParent !== null) || ++attempts > 50) {
+                        clearInterval(scrollInterval);
+                        resolve();
+                    } else {
+                        chatContainer.scrollTop = 0;
+                    }
+                }, 100);
+            });
+        }
+
+        _findTargetIframes(root = document) {
+            let results = [];
+            root.querySelectorAll('iframe').forEach(iframe => { if (iframe.src.startsWith(CONFIG.IFRAME_SRC)) results.push(iframe); });
+            root.querySelectorAll('*').forEach(el => { if (el.shadowRoot) results = results.concat(this._findTargetIframes(el.shadowRoot)); });
+            return results;
         }
     }
 
-    class ButtonFactory {
-        constructor() { this.uiManager = new UIManager(); this.icons = { search: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z"/></svg>`, copy: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-560h80v560h560v80H160Zm160-720v480-480Z"/></svg>`, loading: `<svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#FFFFFF"><style>.spinner_V8m1{transform-origin:center;animation:spinner_zKoa 1.2s linear infinite}.spinner_V8m1 circle{stroke-linecap:round;animation:spinner_YpZS 1.5s ease-in-out infinite}@keyframes spinner_zKoa{100%{transform:rotate(360deg)}}@keyframes spinner_YpZS{0%{stroke-dasharray:0 150;stroke-dashoffset:0}47.5%{stroke-dasharray:42 150;stroke-dashoffset:-16}95%,100%{stroke-dasharray:42 150;stroke-dashoffset:-59}}</style><g class="spinner_V8m1"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="3"></circle></g></svg>`, success: `<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#FFFFFF"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>` }; }
-        createDocSearchButton(iframeDoc) { const button = document.createElement('button'); button.className = CONFIG.DOC_SEARCH.CLASSES.button; button.title = 'Buscar CPF/CNPJ na conversa'; button.innerHTML = this.icons.search; this.applyBaseStyles(button); button.addEventListener('click', async () => { const processor = new ChatProcessor(iframeDoc, this.uiManager); this.setButtonState(button, 'loading'); await processor.findAndProcessDocuments(); this.setButtonState(button, 'default', this.icons.search); }); return button; }
-        createCombinedCopyButton() { const button = document.createElement('button'); button.className = CONFIG.COMBINED_COPY.CLASSES.button; button.title = 'Copiar nome e protocolo'; button.innerHTML = this.icons.copy; this.applyBaseStyles(button, '2px solid rgb(255, 255, 255)'); button.addEventListener('click', async () => { this.setButtonState(button, 'loading'); try { const originalCopyButton = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_originalCopyButton); if (!originalCopyButton) throw new Error('Botão de cópia original não encontrado.'); originalCopyButton.click(); await new Promise(resolve => setTimeout(resolve, 150)); const protocol = await navigator.clipboard.readText(); if (!protocol) throw new Error('Não foi possível ler o protocolo.'); const participantElem = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_participantName); if (!participantElem) throw new Error('Nome do participante não encontrado.'); const participantName = participantElem.textContent.trim(); const combinedText = `${participantName}\n${protocol}`; await navigator.clipboard.writeText(combinedText); this.uiManager.showFeedbackToast('Nome e protocolo copiados!'); this.setButtonState(button, 'default', this.icons.copy); } catch (error) { console.error('Combined copy failed:', error); this.uiManager.showErrorPopup(error.message); this.setButtonState(button, 'error', this.icons.copy); setTimeout(()=>this.setButtonState(button, 'default', this.icons.copy), 2000); } }); return button; }
-        applyBaseStyles(button, border = '1px solid #fff') { Object.assign(button.style, { cursor: 'pointer', transition: 'background-color 0.3s, opacity 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1c7ee1', borderRadius: '6px', padding: '5px', border: border, marginLeft: '8px', opacity: '1' }); button.addEventListener('mouseenter', () => { if(!button.disabled) button.style.backgroundColor = '#1565C0'; }); button.addEventListener('mouseleave', () => { if(!button.disabled) button.style.backgroundColor = '#1c7ee1'; }); }
-        setButtonState(button, state, icon = null) { button.disabled = (state === 'loading'); button.innerHTML = state === 'loading' ? this.icons.loading : (icon || button.innerHTML); switch(state) { case 'success': button.style.backgroundColor = '#28a745'; break; case 'error': button.style.backgroundColor = '#dc3545'; break; default: button.style.backgroundColor = '#1c7ee1'; button.disabled = false; break; } }
+    class CombinedCopyModule {
+        constructor(uiManager, buttonFactory) {
+            this.uiManager = uiManager;
+            this.buttonFactory = buttonFactory;
+        }
+
+        injectOrUpdate() {
+            const targetContainer = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_actionsContainer);
+            if (targetContainer && !targetContainer.querySelector(`.${CONFIG.COMBINED_COPY.CLASSES.button}`)) {
+                const button = this.buttonFactory.createButton({
+                    className: CONFIG.COMBINED_COPY.CLASSES.button,
+                    title: 'Copiar nome e protocolo',
+                    icon: 'copy',
+                    border: '2px solid rgb(255, 255, 255)',
+                    onClick: async (e) => {
+                        await this._performCombinedCopy(e.target.closest('button'));
+                    }
+                });
+                targetContainer.appendChild(button);
+            }
+        }
+
+        async _performCombinedCopy(button) {
+            try {
+                const originalCopyButton = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_originalCopyButton);
+                if (!originalCopyButton) throw new Error('Botão de cópia original não encontrado.');
+                originalCopyButton.click();
+
+                await new Promise(resolve => setTimeout(resolve, 150));
+                const protocol = await navigator.clipboard.readText();
+                if (!protocol) throw new Error('Não foi possível ler o protocolo.');
+
+                const participantElem = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_participantName);
+                if (!participantElem) throw new Error('Nome do participante não encontrado.');
+
+                const participantName = participantElem.textContent.trim();
+                const combinedText = `${participantName}\n${protocol}`;
+                await navigator.clipboard.writeText(combinedText);
+
+                this.uiManager.showFeedbackToast('Nome e protocolo copiados!');
+                this.buttonFactory.setButtonState(button, 'default', this.buttonFactory.icons.copy);
+
+            } catch (error) {
+                console.error('Combined copy failed:', error);
+                this.uiManager.showErrorPopup(error.message);
+                throw error; // Propagate error to be caught by the generic handler in createButton
+            }
+        }
     }
 
 
     // ==================== MAIN APPLICATION ====================
     class GenesysHelperSuite {
-        constructor() { this.buttonFactory = new ButtonFactory(); this.timers = new Map(); this.observer = null; this.updateQueued = false; }
-        init() { console.log('🚀 Initializing Genesys Helper Suite v3.2...'); if (typeof GM_addStyle === 'function') { GM_addStyle(STYLES); } else { const styleSheet = document.createElement("style"); styleSheet.innerText = STYLES; document.head.appendChild(styleSheet); } this.startUnifiedWatcher(); }
-        addTimer(element) { if (element && !this.timers.has(element)) { this.timers.set(element, new ConversationTimer(element)); } }
-        removeTimer(element) { const timer = this.timers.get(element); if (timer) { timer.destroy(); this.timers.delete(element); } }
-        queueUpdate() { if(this.updateQueued) return; this.updateQueued = true; requestAnimationFrame(()=>this.performUpdate()); }
-        performUpdate() { this.timers.forEach((timer, element) => { if (!document.body.contains(element)) this.removeTimer(element); }); const visibleConversations = Array.from(this.timers.keys()).filter(el => el.offsetParent !== null).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top); visibleConversations.forEach((conv, index) => this.timers.get(conv)?.setNumber(index + 1)); const activeConv = document.querySelector(CONFIG.TIMER.SELECTORS.activeConversation); this.timers.forEach((timer, element) => { element === activeConv ? timer.start() : timer.pause(); }); this.updateQueued = false; }
-        findTargetIframes(root = document) { let results = []; root.querySelectorAll('iframe').forEach(iframe => { if (iframe.src.startsWith(CONFIG.IFRAME_SRC)) results.push(iframe); }); root.querySelectorAll('*').forEach(el => { if (el.shadowRoot) results = results.concat(this.findTargetIframes(el.shadowRoot)); }); return results; }
-        injectDocSearchButton() { this.findTargetIframes().forEach(iframe => { try { const actionBar = iframe.contentDocument?.querySelector(CONFIG.DOC_SEARCH.SELECTORS.iframe_actionBar); if (actionBar && !actionBar.querySelector(`.${CONFIG.DOC_SEARCH.CLASSES.button}`)) { actionBar.appendChild(this.buttonFactory.createDocSearchButton(iframe.contentDocument)); } } catch (e) { /* ignore cross-origin errors */ } }); }
-        injectCombinedCopyButton() { const targetContainer = document.querySelector(CONFIG.COMBINED_COPY.SELECTORS.main_actionsContainer); if (targetContainer && !targetContainer.querySelector(`.${CONFIG.COMBINED_COPY.CLASSES.button}`)) { targetContainer.appendChild(this.buttonFactory.createCombinedCopyButton()); } }
+        constructor() {
+            this.uiManager = new UIManager();
+            this.buttonFactory = new ButtonFactory();
+            this.timerModule = new TimerModule();
+            this.docSearchModule = new DocSearchModule(this.uiManager, this.buttonFactory);
+            this.combinedCopyModule = new CombinedCopyModule(this.uiManager, this.buttonFactory);
+            this.observer = null;
+        }
+
+        init() {
+            console.log('🚀 Initializing Genesys Helper Suite v3.3...');
+            if (typeof GM_addStyle === 'function') {
+                GM_addStyle(STYLES);
+            } else {
+                const styleSheet = document.createElement("style");
+                styleSheet.innerText = STYLES;
+                document.head.appendChild(styleSheet);
+            }
+            this.startUnifiedWatcher();
+        }
+
         startUnifiedWatcher() {
             console.log('📡 Unified Watcher enabled.');
             const observerCallback = (mutations) => {
                 let needsTimerUpdate = false;
                 for (const mutation of mutations) {
-                    if (mutation.type === 'childList') {
-                        mutation.addedNodes.forEach(node => {
-                            if (node.nodeType === 1) { // É um elemento
-                                if (node.matches(CONFIG.TIMER.SELECTORS.conversation)) {
-                                    this.addTimer(node);
-                                    needsTimerUpdate = true;
-                                }
-                                node.querySelectorAll(CONFIG.TIMER.SELECTORS.conversation).forEach(conv => this.addTimer(conv));
-                            }
-                        });
-                        mutation.removedNodes.forEach(node => {
-                            if (node.nodeType === 1) {
-                                if (node.matches(CONFIG.TIMER.SELECTORS.conversation)) {
-                                    this.removeTimer(node);
-                                    needsTimerUpdate = true;
-                                }
-                                node.querySelectorAll(CONFIG.TIMER.SELECTORS.conversation).forEach(conv => this.removeTimer(conv));
-                            }
-                        });
-                    }
-                    if (mutation.attributeName === 'class' && mutation.target.matches(CONFIG.TIMER.SELECTORS.conversation)) {
-                        needsTimerUpdate = true;
+                    if (mutation.type === 'childList' || (mutation.type === 'attributes' && mutation.attributeName === 'class')) {
+                         if(mutation.target.matches(CONFIG.TIMER.SELECTORS.conversation) || mutation.target.querySelector(CONFIG.TIMER.SELECTORS.conversation)) {
+                            needsTimerUpdate = true;
+                         }
                     }
                 }
 
-                // Injeções de botões são menos frequentes e podem ser chamadas aqui
-                this.injectDocSearchButton();
-                this.injectCombinedCopyButton();
+                // Inject buttons on any relevant DOM change
+                this.docSearchModule.injectOrUpdate();
+                this.combinedCopyModule.injectOrUpdate();
 
                 if (needsTimerUpdate) {
-                    this.queueUpdate();
+                    this.timerModule.updateFromDOM();
                 }
             };
+
             this.observer = new MutationObserver(observerCallback);
             this.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 
-            // Executa uma verificação inicial
-            document.querySelectorAll(CONFIG.TIMER.SELECTORS.conversation).forEach(conv => this.addTimer(conv));
-            this.queueUpdate();
+            // Perform an initial check
+            this.timerModule.updateFromDOM();
+            this.docSearchModule.injectOrUpdate();
+            this.combinedCopyModule.injectOrUpdate();
         }
     }
 
